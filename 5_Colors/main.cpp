@@ -6,12 +6,14 @@
 #include "Shader.h"
 #include "Camera.h"
 #include "Cube.h"
+#include "stb_image.h"
 
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window);
+unsigned int loadTexture(char const * path);
 
 // settings
 const unsigned int SCR_WIDTH = 1600;
@@ -76,6 +78,22 @@ int main() {
 		"C:/Users/freib/Documents/OpenGL/LearnOpenGL/5_Colors/light.frag"
 	);
 
+
+	//------------------------------------- TEXTURES ----------------------------------------//
+	unsigned int diffuseMap =
+		loadTexture("C:/Users/freib/Documents/OpenGL/LearnOpenGL/5_Colors/Resources/container2.png");
+
+	unsigned int specularMap =
+		loadTexture("C:/Users/freib/Documents/OpenGL/LearnOpenGL/5_Colors/Resources/container2_specular.png");
+
+	unsigned int emissionMap =
+		loadTexture("C:/Users/freib/Documents/OpenGL/LearnOpenGL/5_Colors/Resources/container2_emission.png");
+
+	cubeShader.use(); 
+    cubeShader.setInt("cubeMaterial.diffuse", 0);
+	cubeShader.setInt("cubeMaterial.specular", 1);
+	cubeShader.setInt("cubeMaterial.emission", 2);
+
 	//-----------------------------CUBE object VAO---------------------------//
 	unsigned int cubeVAO;
 	glGenVertexArrays(1, &cubeVAO);
@@ -87,11 +105,14 @@ int main() {
 
 	glBufferData(GL_ARRAY_BUFFER, Cube::size(), Cube::vertices, GL_STATIC_DRAW);
 	// position
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), nullptr);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), nullptr);
 	glEnableVertexAttribArray(0);
 	// normal
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
 	glEnableVertexAttribArray(1);
+	// texture coordinates
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+	glEnableVertexAttribArray(2);
 
 	//------------------------------LIGHT source VAO--------------------------//
 	unsigned int lightVAO;
@@ -102,13 +123,17 @@ int main() {
 	glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
 
 	// position
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), nullptr);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), nullptr);
 	glEnableVertexAttribArray(0);
 
 	//------------------------------SHADER CONSTANTS--------------------------//
 	cubeShader.use();
-	cubeShader.setVec3("objectColor", 1.0f, 0.5f, 0.31f);
-	cubeShader.setVec3("lightColor", lightColor);
+	cubeShader.setFloat("cubeMaterial.shininess", 64.0f);
+
+	cubeShader.setVec3("light.ambient", 0.2f, 0.2f, 0.2f);
+	cubeShader.setVec3("light.diffuse", 0.5f, 0.5f, 0.5f);
+	cubeShader.setVec3("light.specular", 1.0f, 1.0f, 1.0f);
+	cubeShader.setVec3("light.position", lightPos);
 
 	lightShader.use();
 	lightShader.setVec3("lightColor", lightColor);
@@ -144,10 +169,8 @@ int main() {
 
 		// set view position in fragment shader
 		cubeShader.setVec3("viewPos", camera.Position);
-		
-		// set the moving light position
-		glm::vec3 movingLightPos = glm::vec3(sin(currentFrame/2), cos(currentFrame/3), sin(currentFrame/2.7));
-		cubeShader.setVec3("lightPos", movingLightPos);
+
+		cubeShader.setFloat("cubeMaterial.emissionStrength", (sin(currentFrame) + 1.0f) / 2);
 
 		//-----------------------LIGHT SHADER PREPROCESSING---------------------//
 		lightShader.use();
@@ -156,17 +179,26 @@ int main() {
 		
 		// model transformation
 		glm::mat4 lightModel = glm::mat4(1.0);
-		lightModel = glm::translate(lightModel, movingLightPos);
+		lightModel = glm::translate(lightModel, lightPos);
 		lightModel = glm::scale(lightModel, glm::vec3(0.2f));
 		lightShader.setMat4("model", lightModel);
+
+		lightShader.setVec3("lightColor", lightColor);
 		
 		//------------------------------RENDERING-------------------------------//
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+		
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, diffuseMap);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, specularMap);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, emissionMap);
 
 		cubeShader.use();
 		glBindVertexArray(cubeVAO);
 		glDrawArrays(GL_TRIANGLES, 0, Cube::size());
+
 
 		lightShader.use();
 		glBindVertexArray(lightVAO);
@@ -237,4 +269,41 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
     camera.ProcessMouseScroll(static_cast<float>(yoffset));
+}
+
+unsigned int loadTexture(char const * path)
+{
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    
+    int width, height, nrComponents;
+    unsigned char *data = stbi_load(path, &width, &height, &nrComponents, 0);
+    if (data)
+    {
+        GLenum format;
+        if (nrComponents == 1)
+            format = GL_RED;
+        else if (nrComponents == 3)
+            format = GL_RGB;
+        else if (nrComponents == 4)
+            format = GL_RGBA;
+
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        stbi_image_free(data);
+    }
+    else
+    {
+        std::cout << "Texture failed to load at path: " << path << std::endl;
+        stbi_image_free(data);
+    }
+
+    return textureID;
 }
