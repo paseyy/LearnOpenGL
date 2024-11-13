@@ -9,6 +9,9 @@
 #include "stb_image.h"
 
 
+#define NUM_CUBES 10
+
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -78,6 +81,18 @@ int main() {
 		"C:/Users/freib/Documents/OpenGL/LearnOpenGL/5_Colors/light.frag"
 	);
 
+	glm::vec3 cubePositions[NUM_CUBES] = {
+		glm::vec3(0.0f,  0.0f,  0.0f),
+		glm::vec3(2.0f,  5.0f, -10.0f),
+		glm::vec3(-1.5f, -2.2f, -2.5f),
+		glm::vec3(-3.8f, -2.0f, -12.3f),
+		glm::vec3(2.4f, -0.4f, -3.5f),
+		glm::vec3(-1.7f,  3.0f, -7.5f),
+		glm::vec3(1.3f, -2.0f, -2.5f),
+		glm::vec3(1.5f,  2.0f, -2.5f),
+		glm::vec3(1.5f,  0.2f, -1.5f),
+		glm::vec3(-1.3f,  1.0f, -1.5f)
+	};
 
 	//------------------------------------- TEXTURES ----------------------------------------//
 	unsigned int diffuseMap =
@@ -130,10 +145,20 @@ int main() {
 	cubeShader.use();
 	cubeShader.setFloat("cubeMaterial.shininess", 64.0f);
 
-	cubeShader.setVec3("light.ambient", 0.2f, 0.2f, 0.2f);
+	cubeShader.setVec3("light.ambient", 0.1f, 0.1f, 0.1f);
 	cubeShader.setVec3("light.diffuse", 0.5f, 0.5f, 0.5f);
 	cubeShader.setVec3("light.specular", 1.0f, 1.0f, 1.0f);
+	// for directional lights:
+	cubeShader.setVec3("light.direction", glm::vec3(-0.2f, -0.0f, -1.0f));
+	// for point lights:
 	cubeShader.setVec3("light.position", lightPos);
+	// both of these and an angle are needed for spotlights
+	cubeShader.setFloat("light.cutoff", glm::cos(glm::pi<float>() / 10));
+	cubeShader.setFloat("light.outerCutoff", glm::cos(glm::pi<float>() / 8));
+
+	cubeShader.setFloat("light.constant", 1.0f);
+	cubeShader.setFloat("light.linear", 0.09f);
+	cubeShader.setFloat("light.quadratic", 0.032f);
 
 	lightShader.use();
 	lightShader.setVec3("lightColor", lightColor);
@@ -170,7 +195,9 @@ int main() {
 		// set view position in fragment shader
 		cubeShader.setVec3("viewPos", camera.Position);
 
-		cubeShader.setFloat("cubeMaterial.emissionStrength", (sin(currentFrame) + 1.0f) / 2);
+		// vary the emission strength over time
+		// cubeShader.setFloat("cubeMaterial.emissionStrength", (sin(currentFrame) + 1.0f) / 2);
+		cubeShader.setFloat("cubeMaterial.emissionStrength", 0);
 
 		//-----------------------LIGHT SHADER PREPROCESSING---------------------//
 		lightShader.use();
@@ -197,13 +224,24 @@ int main() {
 
 		cubeShader.use();
 		glBindVertexArray(cubeVAO);
-		glDrawArrays(GL_TRIANGLES, 0, Cube::size());
 
+		for (int i = 0; i < NUM_CUBES; i++) {
+			cubeModel = glm::identity<glm::mat4>();
+
+			cubeModel = glm::translate(cubeModel, cubePositions[i]);
+
+			cubeModel = glm::rotate(cubeModel, currentFrame, glm::vec3(1.0, 0.0, 0.0));
+			cubeModel = glm::rotate(cubeModel, 1.3f * currentFrame, glm::vec3(0.0, 1.0, 0.0));
+			cubeModel = glm::rotate(cubeModel, 1.7f * currentFrame, glm::vec3(0.0, 0.0, 1.0));
+			
+			cubeShader.setMat4("model", cubeModel);
+
+			glDrawArrays(GL_TRIANGLES, 0, Cube::size());
+		}
 
 		lightShader.use();
 		glBindVertexArray(lightVAO);
 		glDrawArrays(GL_TRIANGLES, 0, Cube::size());
-
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
@@ -280,7 +318,7 @@ unsigned int loadTexture(char const * path)
     unsigned char *data = stbi_load(path, &width, &height, &nrComponents, 0);
     if (data)
     {
-        GLenum format;
+        GLenum format = GL_RED;
         if (nrComponents == 1)
             format = GL_RED;
         else if (nrComponents == 3)

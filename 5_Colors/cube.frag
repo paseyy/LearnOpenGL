@@ -16,10 +16,18 @@ struct Material {
 
 struct Light {
 	vec3 position;
+	vec3 direction;
+	float cutoff;
+	float outerCutoff;
 
 	vec3 ambient;
 	vec3 diffuse;
 	vec3 specular;
+
+	// attenuation values
+	float constant;
+	float linear;
+	float quadratic;
 };
 
 
@@ -36,7 +44,12 @@ void main() {
 
 	// diffuse component
 	vec3 n = normalize(vNormal);
+
+	// point light:
 	vec3 l = normalize(light.position - vPos);
+	// directional light:
+	// vec3 l = normalize(-light.direction);
+
 	float diff = max(dot(n, l), 0.0);
 	vec3 diffuse = diff * light.diffuse * vec3(texture(cubeMaterial.diffuse, vTexCoords));
 
@@ -49,6 +62,22 @@ void main() {
 	// emission
 	vec3 emission = vec3(texture(cubeMaterial.emission, vTexCoords)).ggb * cubeMaterial.emissionStrength;
 
+	// light attenuation
+	float dist = length(light.position - vPos);
+	float attenuation = 1.0 / (light.constant + light.linear * dist + light.quadratic * (dist * dist));
+
+
+	// cutoff for spotlights
+	float theta = dot(l, normalize(-light.direction));
+	float epsilon = light.cutoff - light.outerCutoff;
+	float intensity = clamp((theta - light.outerCutoff) / epsilon, 0.0, 1.0); 
+
+	//fColor = vec4(intensity, 0, 0, 0);
+	//return;
+
+	diffuse *= intensity;
+	specular *= intensity;
+	
 	// result
 	vec3 result = ambient + diffuse + specular + emission;
 	fColor = vec4(result, 1.0);
